@@ -1,0 +1,919 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Website Content Scraper</title>
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css" rel="stylesheet" />
+  <!-- Include DOMPurify to sanitize the HTML output -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/2.3.4/purify.min.js"></script>
+  <style>
+    .loading {
+      display: inline-block;
+      width: 20px;
+      height: 20px;
+      border: 3px solid rgba(255, 255, 255, 0.3);
+      border-radius: 50%;
+      border-top-color: #fff;
+      animation: spin 1s ease-in-out infinite;
+    }
+    @keyframes spin { 
+      to { transform: rotate(360deg); } 
+    }
+    ul { 
+      list-style-type: none; 
+      padding-left: 1rem; 
+    }
+    .hidden { display: none; }
+    .folder-header { font-weight: 600; }
+    /* Debug log styling */
+    #debug-log {
+      background-color: #f3f4f6;
+      padding: 10px;
+      border: 1px solid #e5e7eb;
+      border-radius: 0.375rem;
+      max-height: 200px;
+      overflow-y: auto;
+      margin-bottom: 1rem;
+    }
+    #debug-log h2 { 
+      font-weight: 600; 
+      margin-bottom: 0.5rem; 
+    }
+    #debug-log p { 
+      font-size: 0.875rem; 
+      margin: 0; 
+    }
+    /* Styles for rendered blog content */
+    .blog-content {
+      font-family: "Roboto", sans-serif;
+      line-height: 1.6;
+      max-width: 800px;
+      margin: auto;
+    }
+    .blog-content h1 {
+      font-size: 2.5rem;
+      margin-top: 1.5rem;
+      margin-bottom: 1rem;
+      font-weight: 700;
+    }
+    .blog-content h2 {
+      font-size: 2rem;
+      margin-top: 1.5rem;
+      margin-bottom: 1rem;
+      font-weight: 600;
+    }
+    .blog-content h3 {
+      font-size: 1.75rem;
+      margin-top: 1.5rem;
+      margin-bottom: 1rem;
+      font-weight: 600;
+    }
+    .blog-content h4 {
+      font-size: 1.5rem;
+      margin-top: 1.5rem;
+      margin-bottom: 1rem;
+      font-weight: 600;
+    }
+    .blog-content h5 {
+      font-size: 1.25rem;
+      margin-top: 1.5rem;
+      margin-bottom: 1rem;
+      font-weight: 500;
+    }
+    .blog-content h6 {
+      font-size: 1rem;
+      margin-top: 1.5rem;
+      margin-bottom: 1rem;
+      font-weight: 500;
+    }
+    .blog-content p {
+      margin-bottom: 1rem;
+    }
+    .blog-content img {
+      max-width: 100%;
+      height: auto;
+      margin: 1rem 0;
+    }
+    .blog-content ul,
+    .blog-content ol {
+      margin: 1rem 0 1rem 2rem;
+      padding-left: 1rem;
+    }
+    .blog-content ul {
+      list-style-type: disc;
+    }
+    .blog-content ol {
+      list-style-type: decimal;
+    }
+    /* Hide placeholder SVG images */
+    img[src^="data:image/svg+xml"] {
+      display: none !important;
+    }
+    /* Style links in blog content */
+    .blog-content a {
+      color: #1D4ED8;
+      text-decoration: underline;
+    }
+    .blog-content a:hover {
+      color: #2563EB;
+    }
+  </style>
+</head>
+<body class="bg-gray-100 min-h-screen">
+  <div class="container mx-auto px-4 py-8">
+    <h1 class="text-3xl font-bold mb-8 text-center">Website Content Scraper</h1>
+    
+    <!-- Debug Log Panel -->
+    <div id="debug-log">
+      <h2>Debug Log</h2>
+      <div id="debug-messages"></div>
+    </div>
+    
+    <!-- Step 1: Enter URL -->
+    <div id="step1" class="bg-white rounded-lg shadow-md p-6 mb-8">
+      <h2 class="text-xl font-semibold mb-4">Step 1: Enter Website URL</h2>
+      <div class="flex">
+        <input type="url" id="website-url" placeholder="https://example.com" class="flex-1 px-4 py-2 border rounded-l-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+        <button id="fetch-sitemaps" class="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-r-lg">Fetch Sitemaps</button>
+      </div>
+      <div id="step1-loading" class="hidden mt-4 text-center">
+        <span class="loading"></span> Fetching sitemaps...
+      </div>
+      <div id="step1-error" class="hidden mt-4 text-red-500"></div>
+    </div>
+    
+    <!-- Step 2: Select Sitemaps -->
+    <div id="step2" class="bg-white rounded-lg shadow-md p-6 mb-8 hidden">
+      <h2 class="text-xl font-semibold mb-4">Step 2: Select Sitemaps</h2>
+      <!-- Group selection buttons -->
+      <div class="mb-2">
+        <button id="select-all-sitemaps" class="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded">Select All</button>
+        <button id="deselect-all-sitemaps" class="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded ml-2">Deselect All</button>
+      </div>
+      <div id="sitemaps-tree" class="mb-4"></div>
+      <button id="parse-sitemaps" class="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg">Parse Selected Sitemaps</button>
+      <div id="step2-loading" class="hidden mt-4 text-center">
+        <span class="loading"></span> Parsing sitemaps...
+      </div>
+      <div id="step2-error" class="hidden mt-4 text-red-500"></div>
+    </div>
+    
+    <!-- Step 3: Select URLs to Scrape -->
+    <div id="step3" class="bg-white rounded-lg shadow-md p-6 mb-8 hidden">
+      <h2 class="text-xl font-semibold mb-4">Step 3: Select URLs to Scrape</h2>
+      <!-- URL filter and group selection buttons -->
+      <div class="mb-4">
+        <input type="text" id="url-filter" placeholder="Filter URLs..." class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 mb-2" />
+        <span id="url-count">0 URLs selected</span>
+      </div>
+      <div class="mb-2">
+        <button id="select-all-urls" class="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded">Select All</button>
+        <button id="deselect-all-urls" class="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded ml-2">Deselect All</button>
+      </div>
+      <div id="urls-tree" class="mb-4 max-h-96 overflow-y-auto border p-2 rounded"></div>
+      <button id="scrape-urls" class="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg">Scrape Selected URLs</button>
+      <div id="step3-loading" class="hidden mt-4 text-center">
+        <span class="loading"></span> Scraping content...
+      </div>
+      <div id="step3-error" class="hidden mt-4 text-red-500"></div>
+    </div>
+    
+    <!-- Step 4: Results -->
+    <div id="step4" class="bg-white rounded-lg shadow-md p-6 mb-8 hidden">
+      <!-- Export Options moved above the content -->
+      <div class="flex flex-wrap gap-3 mb-4">
+        <button id="export-json" class="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg">Export as JSON</button>
+        <button id="export-markdown" class="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg">Export as Markdown</button>
+        <button id="export-html" class="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg">Export as HTML</button>
+        <button id="export-text" class="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg">Export as Plain Text</button>
+      </div>
+      <div id="export-loading" class="hidden mt-4 text-center">
+        <span class="loading"></span> Exporting...
+      </div>
+      <div id="export-result" class="hidden mt-4 p-3 bg-green-100 text-green-700 rounded-lg"></div>
+      <div id="export-error" class="hidden mt-4 text-red-500"></div>
+      
+      <h2 class="text-xl font-semibold mb-4">Step 4: Scraped Content</h2>
+      <div id="results-summary" class="mb-4 text-sm text-gray-600"></div>
+      <!-- The HTML content will be rendered inside this container -->
+      <div id="results-list" class="mb-6 blog-content"></div>
+    </div>
+  </div>
+  
+  <script>
+
+    // Global variables for pagination
+let currentPage = 1;
+const pageSize = 20; // Adjust as needed
+
+// Function to render a single page of results
+function renderResultsPage(results, page) {
+  const resultsList = document.getElementById('results-list');
+  resultsList.innerHTML = '';
+
+  const startIndex = (page - 1) * pageSize;
+  const endIndex = Math.min(startIndex + pageSize, results.length);
+  for (let i = startIndex; i < endIndex; i++) {
+    const result = results[i];
+    const safeHTML = DOMPurify.sanitize(result.htmlContent || '');
+    const div = document.createElement('div');
+    div.className = 'mb-4 p-4 border rounded';
+    div.innerHTML = `
+      <h3 class="text-xl font-semibold">${result.title}</h3>
+      <p class="text-sm text-gray-600">
+        Source: <a href="${result.url}" class="text-blue-500" target="_blank">${result.url}</a>
+      </p>
+      <div class="mt-2 content-preview">${safeHTML || 'No content available.'}</div>
+    `;
+    resultsList.appendChild(div);
+  }
+}
+
+// Function to render pagination controls
+function renderPaginationControls(results) {
+  const container = document.getElementById('results-list');
+  
+  // Remove any existing pagination controls
+  const existingPagination = document.getElementById('pagination-controls');
+  if (existingPagination) existingPagination.remove();
+
+  const totalPages = Math.ceil(results.length / pageSize);
+  if (totalPages <= 1) return; // No need for pagination if only one page
+
+  const paginationDiv = document.createElement('div');
+  paginationDiv.id = 'pagination-controls';
+  paginationDiv.className = 'flex justify-center items-center mt-4 gap-2';
+
+  // Previous button
+  const prevBtn = document.createElement('button');
+  prevBtn.textContent = 'Previous';
+  prevBtn.className = 'bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded';
+  prevBtn.disabled = currentPage === 1;
+  prevBtn.addEventListener('click', () => {
+    if (currentPage > 1) {
+      currentPage--;
+      renderResultsPage(scrapedContent, currentPage);
+      renderPaginationControls(scrapedContent);
+    }
+  });
+  paginationDiv.appendChild(prevBtn);
+
+  // Page info
+  const pageInfo = document.createElement('span');
+  pageInfo.textContent = `Page ${currentPage} of ${totalPages}`;
+  paginationDiv.appendChild(pageInfo);
+
+  // Next button
+  const nextBtn = document.createElement('button');
+  nextBtn.textContent = 'Next';
+  nextBtn.className = 'bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded';
+  nextBtn.disabled = currentPage === totalPages;
+  nextBtn.addEventListener('click', () => {
+    if (currentPage < totalPages) {
+      currentPage++;
+      renderResultsPage(scrapedContent, currentPage);
+      renderPaginationControls(scrapedContent);
+    }
+  });
+  paginationDiv.appendChild(nextBtn);
+
+  // Append pagination controls below the results
+  container.parentNode.insertBefore(paginationDiv, container.nextSibling);
+}
+
+// Updated renderResults function that uses pagination
+function renderResults(results) {
+  // Reset pagination
+  currentPage = 1;
+  renderResultsPage(results, currentPage);
+  renderPaginationControls(results);
+  document.getElementById('results-summary').textContent = `Scraped ${results.length} URL(s).`;
+}
+
+
+    // Global variables
+    let allSitemapsCombined = [];
+    let allUrls = [];
+    let scrapedContent = [];
+    
+    // DOM elements
+    const websiteUrlInput = document.getElementById('website-url');
+    websiteUrlInput.addEventListener('keydown', function(event) {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        fetchSitemapsBtn.click();
+      }
+    });
+    const fetchSitemapsBtn = document.getElementById('fetch-sitemaps');
+    const parseSitemapsBtn = document.getElementById('parse-sitemaps');
+    const scrapeUrlsBtn = document.getElementById('scrape-urls');
+    const urlFilterInput = document.getElementById('url-filter');
+    const urlCountSpan = document.getElementById('url-count');
+    
+    // Helper functions for loading & error messages
+    function showLoading(step) { document.getElementById(step + '-loading').classList.remove('hidden'); }
+    function hideLoading(step) { document.getElementById(step + '-loading').classList.add('hidden'); }
+    function showError(step, message) {
+      const elem = document.getElementById(step + '-error');
+      elem.textContent = message;
+      elem.classList.remove('hidden');
+    }
+    function hideError(step) { document.getElementById(step + '-error').classList.add('hidden'); }
+    
+    // Debug log
+    function addDebugMessage(message) {
+      const log = document.getElementById('debug-messages');
+      const timeStamp = new Date().toLocaleTimeString();
+      const p = document.createElement('p');
+      p.textContent = `[${timeStamp}] ${message}`;
+      log.appendChild(p);
+      log.scrollTop = log.scrollHeight;
+    }
+    
+    // Debounce helper
+    function debounce(func, delay) {
+      let timeout;
+      return function(...args) {
+        clearTimeout(timeout);
+        timeout = setTimeout(() => func.apply(this, args), delay);
+      };
+    }
+    
+    urlFilterInput.addEventListener('input', debounce(() => {
+      const filter = urlFilterInput.value.toLowerCase();
+      const items = document.querySelectorAll('#urls-tree li');
+      items.forEach(item => {
+        item.style.display = item.textContent.toLowerCase().includes(filter) ? '' : 'none';
+      });
+      addDebugMessage(`Filter applied: "${filter}"`);
+    }, 300));
+    
+    // --- Fixed Concurrency Helper ---
+    async function processWithFixedConcurrency(tasks, concurrency = 50) {
+      const results = [];
+      let index = 0;
+      async function worker() {
+        while (index < tasks.length) {
+          const task = tasks[index];
+          index++;
+          try { results.push(await task()); }
+          catch(err) { results.push({ error: err.message }); }
+        }
+      }
+      const workers = [];
+      for (let i = 0; i < concurrency; i++) { workers.push(worker()); }
+      await Promise.all(workers);
+      return results;
+    }
+    
+    // --- Fetch All Sitemaps (drill down sitemap indexes) ---
+    async function fetchAllSitemaps(sitemaps) {
+      const tasks = sitemaps.map(url => async () => {
+        addDebugMessage(`Checking sitemap: ${url}`);
+        const response = await fetch('/api/parse-sitemap', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sitemapUrl: url })
+        });
+        if (!response.ok) {
+          addDebugMessage(`Failed to parse ${url}`);
+          return [url];
+        }
+        const data = await response.json();
+        if (data.isSitemapIndex && data.sitemaps && data.sitemaps.length > 0) {
+          addDebugMessage(`Sitemap index ${url} contains ${data.sitemaps.length} child sitemaps`);
+          return data.sitemaps;
+        } else {
+          return [url];
+        }
+      });
+      const results = await processWithFixedConcurrency(tasks, 10);
+      return results.flat();
+    }
+    
+    // --- Build Sitemap Tree for Step 2 with Group Selection ---
+    function buildSitemapTree(sitemaps) {
+      const tree = {};
+      sitemaps.forEach(sitemapUrl => {
+        try {
+          const urlInst = new URL(sitemapUrl);
+          const fileName = urlInst.pathname.split('/').pop();
+          let name = fileName;
+          if(name.startsWith('wp-sitemap')) {
+            name = name.replace(/^wp-sitemap[-_]?/, '');
+          } else if(name.startsWith('sitemap_')) {
+            name = name.replace(/^sitemap[_-]?/, '');
+          }
+          if(name.endsWith('.xml')) { name = name.slice(0, -4); }
+          if(name === '') { name = 'main'; }
+          const parts = name.split(/[_-]+/).filter(Boolean);
+          if(parts.length === 0) {
+            tree._root = tree._root || { urls: [] };
+            tree._root.urls.push(sitemapUrl);
+            return;
+          }
+          let current = tree;
+          parts.forEach((part, idx) => {
+            if(idx === parts.length - 1) {
+              current._urls = current._urls || [];
+              current._urls.push(sitemapUrl);
+            } else {
+              if(!current[part]) { current[part] = { children: {}, urls: [] }; }
+              current = current[part].children;
+            }
+          });
+        } catch(e) {
+          tree._other = tree._other || { urls: [] };
+          tree._other.urls.push(sitemapUrl);
+        }
+      });
+      return tree;
+    }
+    
+    // --- Render Sitemap Tree (collapsible with group checkboxes) for Step 2 ---
+    function renderSitemapTree(node, parentElement) {
+      const ul = document.createElement('ul');
+      if(node._urls && node._urls.length > 0) {
+        node._urls.forEach(url => {
+          const li = document.createElement('li');
+          li.innerHTML = `<input type="checkbox" class="sitemap-checkbox" data-sitemap="${url}"> <span>${url}</span>`;
+          ul.appendChild(li);
+        });
+      }
+      for (const key in node) {
+        if(key === '_urls' || key === '_root' || key === '_other') continue;
+        const li = document.createElement('li');
+        li.classList.add('folder-item');
+        const headerContainer = document.createElement('div');
+        headerContainer.classList.add('folder-header', 'cursor-pointer', 'p-2', 'hover:bg-gray-100', 'flex', 'items-center');
+        const folderCheckbox = document.createElement('input');
+        folderCheckbox.type = 'checkbox';
+        folderCheckbox.classList.add('folder-checkbox', 'sitemap-folder-checkbox');
+        folderCheckbox.addEventListener('change', (e) => {
+          const checked = e.target.checked;
+          const descendantCheckboxes = li.querySelectorAll('input[type="checkbox"]');
+          descendantCheckboxes.forEach(cb => { cb.checked = checked; });
+        });
+        headerContainer.appendChild(folderCheckbox);
+        const headerTitle = document.createElement('span');
+        headerTitle.textContent = ' ' + key;
+        headerContainer.appendChild(headerTitle);
+        li.appendChild(headerContainer);
+        const childContainer = document.createElement('div');
+        childContainer.classList.add('child-container', 'ml-4');
+        renderSitemapTree(node[key].children, childContainer);
+        li.appendChild(childContainer);
+        ul.appendChild(li);
+      }
+      if(node._other && node._other.urls) {
+        const li = document.createElement('li');
+        li.classList.add('folder-item');
+        const headerContainer = document.createElement('div');
+        headerContainer.classList.add('folder-header', 'cursor-pointer', 'p-2', 'hover:bg-gray-100', 'flex', 'items-center');
+        const folderCheckbox = document.createElement('input');
+        folderCheckbox.type = 'checkbox';
+        folderCheckbox.classList.add('folder-checkbox', 'sitemap-folder-checkbox');
+        folderCheckbox.addEventListener('change', (e) => {
+          const checked = e.target.checked;
+          const descendantCheckboxes = li.querySelectorAll('input[type="checkbox"]');
+          descendantCheckboxes.forEach(cb => { cb.checked = checked; });
+        });
+        headerContainer.appendChild(folderCheckbox);
+        const headerTitle = document.createElement('span');
+        headerTitle.textContent = ' Other Sitemaps';
+        headerContainer.appendChild(headerTitle);
+        li.appendChild(headerContainer);
+        const childContainer = document.createElement('div');
+        childContainer.classList.add('child-container', 'ml-4');
+        node._other.urls.forEach(url => {
+          const li2 = document.createElement('li');
+          li2.innerHTML = `<input type="checkbox" class="sitemap-checkbox" data-sitemap="${url}"> <span>${url}</span>`;
+          childContainer.appendChild(li2);
+        });
+        li.appendChild(childContainer);
+        ul.appendChild(li);
+      }
+      parentElement.appendChild(ul);
+    }
+    
+    // --- Get Selected Sitemap URLs from the tree ---
+    function getSelectedSitemapsFromTree() {
+      const checkboxes = document.querySelectorAll('.sitemap-checkbox:checked');
+      return Array.from(checkboxes).map(cb => cb.dataset.sitemap);
+    }
+    
+    // --- Step 1: Fetch Sitemaps from robots.txt ---
+    fetchSitemapsBtn.addEventListener('click', async () => {
+      const url = websiteUrlInput.value.trim();
+      if(!url) { showError('step1', 'Please enter a valid URL'); return; }
+      addDebugMessage(`Initiating sitemap fetch for ${url}`);
+      try {
+        showLoading('step1'); hideError('step1');
+        const response = await fetch('/api/get-sitemaps', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url })
+        });
+        if(!response.ok) { throw new Error('Failed to fetch sitemaps'); }
+        const data = await response.json();
+        if(!data.sitemaps || data.sitemaps.length === 0) {
+          showError('step1', 'No sitemaps found in robots.txt');
+          hideLoading('step1');
+          addDebugMessage(`No sitemaps found for ${url}`);
+          return;
+        }
+        addDebugMessage(`Fetched ${data.sitemaps.length} sitemap(s) from robots.txt`);
+        allSitemapsCombined = await fetchAllSitemaps(data.sitemaps);
+        addDebugMessage(`Total sitemaps after drilling down: ${allSitemapsCombined.length}`);
+        const sitemapTree = buildSitemapTree(allSitemapsCombined);
+        const treeContainer = document.getElementById('sitemaps-tree');
+        treeContainer.innerHTML = '';
+        renderSitemapTree(sitemapTree, treeContainer);
+        addDebugMessage(`Displayed hierarchical sitemap tree.`);
+        hideLoading('step1');
+        document.getElementById('step1').classList.add('opacity-50');
+        document.getElementById('step2').classList.remove('hidden');
+      } catch(error) {
+        console.error('Error:', error);
+        showError('step1', error.message || 'An error occurred while fetching sitemaps');
+        hideLoading('step1');
+        addDebugMessage(`Error fetching sitemaps: ${error.message}`);
+      }
+    });
+    
+    // Group selection buttons for sitemaps
+    document.getElementById('select-all-sitemaps').addEventListener('click', () => {
+      document.querySelectorAll('#sitemaps-tree input[type="checkbox"]').forEach(cb => { cb.checked = true; });
+    });
+    document.getElementById('deselect-all-sitemaps').addEventListener('click', () => {
+      document.querySelectorAll('#sitemaps-tree input[type="checkbox"]').forEach(cb => { cb.checked = false; });
+    });
+    
+    // --- Step 2: Parse Selected Sitemaps ---
+    parseSitemapsBtn.addEventListener('click', async () => {
+      const chosenSitemaps = getSelectedSitemapsFromTree();
+      if(chosenSitemaps.length === 0) {
+        showError('step2', 'Please select at least one sitemap');
+        return;
+      }
+      addDebugMessage(`Starting to parse ${chosenSitemaps.length} selected sitemap(s) using fixed concurrency`);
+      try {
+        showLoading('step2'); hideError('step2');
+        allUrls = [];
+        const tasks = chosenSitemaps.map(sitemapUrl => async () => {
+          addDebugMessage(`Fetching sitemap: ${sitemapUrl}`);
+          const response = await fetch('/api/parse-sitemap', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ sitemapUrl })
+          });
+          if(!response.ok) { throw new Error(`Failed to parse sitemap: ${sitemapUrl}`); }
+          const data = await response.json();
+          if(data.isSitemapIndex) {
+            addDebugMessage(`Sitemap index detected for ${sitemapUrl}. Processing its child sitemaps...`);
+            const childTasks = data.sitemaps.map(childUrl => async () => {
+              addDebugMessage(`Processing child sitemap: ${childUrl}`);
+              await parseSingleSitemap(childUrl);
+            });
+            await processWithFixedConcurrency(childTasks, 50);
+          } else {
+            addDebugMessage(`Parsed normal sitemap: ${sitemapUrl}. Found ${data.urls.length} URL(s).`);
+            allUrls = [...allUrls, ...data.urls];
+          }
+        });
+        await processWithFixedConcurrency(tasks, 10);
+        if(allUrls.length === 0) {
+          showError('step2', 'No URLs found in the selected sitemaps');
+          hideLoading('step2');
+          addDebugMessage('No URLs were found after parsing sitemaps.');
+          return;
+        }
+        addDebugMessage(`Total URLs found: ${allUrls.length}`);
+        renderUrls(allUrls);
+        hideLoading('step2');
+        document.getElementById('step2').classList.add('opacity-50');
+        document.getElementById('step3').classList.remove('hidden');
+      } catch(error) {
+        console.error('Error:', error);
+        showError('step2', error.message || 'An error occurred while parsing sitemaps');
+        hideLoading('step2');
+        addDebugMessage(`Error parsing sitemaps: ${error.message}`);
+      }
+    });
+    
+    // Recursive function to parse a single sitemap (for nested indexes)
+    async function parseSingleSitemap(sitemapUrl) {
+      addDebugMessage(`Fetching sitemap: ${sitemapUrl}`);
+      const response = await fetch('/api/parse-sitemap', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sitemapUrl })
+      });
+      if(!response.ok) {
+        addDebugMessage(`Failed to parse sitemap: ${sitemapUrl}`);
+        console.error(`Failed to parse sitemap: ${sitemapUrl}`);
+        return;
+      }
+      const data = await response.json();
+      if(!data.isSitemapIndex && data.urls) {
+        addDebugMessage(`Parsed sitemap: ${sitemapUrl}. Found ${data.urls.length} URL(s).`);
+        allUrls = [...allUrls, ...data.urls];
+      } else if(data.isSitemapIndex && data.sitemaps) {
+        addDebugMessage(`Nested sitemap index found in ${sitemapUrl}. Processing child sitemaps...`);
+        const childTasks = data.sitemaps.map(childUrl => async () => {
+          addDebugMessage(`Processing child sitemap: ${childUrl}`);
+          await parseSingleSitemap(childUrl);
+        });
+        await processWithFixedConcurrency(childTasks, 50);
+      }
+    }
+    
+    // --- Build and Render URL Tree for Pages (with group checkboxes) ---
+    function buildUrlTree(urls) {
+      const tree = {};
+      urls.forEach(urlObj => {
+        try {
+          const { url } = urlObj;
+          const urlInst = new URL(url);
+          let pathname = urlInst.pathname;
+          if (pathname !== '/' && pathname.endsWith('/')) {
+            pathname = pathname.slice(0, -1);
+          }
+          const parts = pathname.split('/').filter(Boolean);
+          if (parts.length === 0) {
+            tree._root = tree._root || { urls: [] };
+            tree._root.urls.push(urlObj);
+            return;
+          }
+          let current = tree;
+          parts.forEach((part, idx) => {
+            if (!current[part]) {
+              current[part] = { children: {}, _urls: [] };
+            }
+            if (idx === parts.length - 1) {
+              current[part]._urls = current[part]._urls || [];
+              current[part]._urls.push(urlObj);
+            } else {
+              current = current[part].children;
+            }
+          });
+        } catch(error) {
+          tree._other = tree._other || { urls: [] };
+          tree._other.urls.push(urlObj);
+          console.error(`Error processing URL ${urlObj.url}:`, error);
+        }
+      });
+      return tree;
+    }
+    
+    // --- Render URL Tree with Independent Toggle & Checkbox Propagation ---
+    function renderUrlItems(urls, container, startIndex = 0) {
+      const PAGE_SIZE = 50;
+      const endIndex = Math.min(startIndex + PAGE_SIZE, urls.length);
+      for (let i = startIndex; i < endIndex; i++) {
+        const urlObj = urls[i];
+        const li = document.createElement('li');
+        li.classList.add('flex', 'items-center', 'p-1');
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.classList.add('url-checkbox');
+        checkbox.dataset.url = urlObj.url;
+        checkbox.addEventListener('change', updateUrlCount);
+        const link = document.createElement('a');
+        link.href = urlObj.url;
+        link.target = '_blank';
+        link.classList.add('text-sm', 'break-all', 'ml-2');
+        link.textContent = urlObj.url;
+        li.appendChild(checkbox);
+        li.appendChild(link);
+        container.appendChild(li);
+      }
+      if (endIndex < urls.length) {
+        const loadMoreLi = document.createElement('li');
+        loadMoreLi.classList.add('load-more', 'p-1', 'text-blue-500', 'cursor-pointer');
+        loadMoreLi.textContent = 'Load more...';
+        loadMoreLi.addEventListener('click', () => {
+          container.removeChild(loadMoreLi);
+          renderUrlItems(urls, container, endIndex);
+          updateUrlCount();
+        });
+        container.appendChild(loadMoreLi);
+      }
+    }
+    
+    function renderUrlTreeImproved(node, parentElement) {
+      const ul = document.createElement('ul');
+      if (node._root && node._root.urls && node._root.urls.length > 0) {
+        const li = document.createElement('li');
+        li.classList.add('folder-item');
+        const headerContainer = document.createElement('div');
+        headerContainer.classList.add('folder-header', 'flex', 'items-center', 'p-2', 'hover:bg-gray-100');
+        const folderCheckbox = document.createElement('input');
+        folderCheckbox.type = 'checkbox';
+        folderCheckbox.classList.add('folder-checkbox', 'url-folder-checkbox');
+        folderCheckbox.addEventListener('change', (e) => {
+          const checked = e.target.checked;
+          li.querySelectorAll('input.url-checkbox').forEach(cb => cb.checked = checked);
+          updateUrlCount();
+        });
+        headerContainer.appendChild(folderCheckbox);
+        const toggleSpan = document.createElement('span');
+        toggleSpan.textContent = ' Root URLs';
+        toggleSpan.style.cursor = 'pointer';
+        headerContainer.appendChild(toggleSpan);
+        li.appendChild(headerContainer);
+        const childContainer = document.createElement('div');
+        childContainer.classList.add('child-container', 'ml-4');
+        renderUrlItems(node._root.urls, childContainer);
+        li.appendChild(childContainer);
+        toggleSpan.addEventListener('click', () => { childContainer.classList.toggle('hidden'); });
+        ul.appendChild(li);
+      }
+      Object.keys(node).forEach(key => {
+        if (['_root', '_urls', '_other'].includes(key)) return;
+        const folderData = node[key];
+        const li = document.createElement('li');
+        li.classList.add('folder-item');
+        const headerContainer = document.createElement('div');
+        headerContainer.classList.add('folder-header', 'flex', 'items-center', 'p-2', 'hover:bg-gray-100');
+        const folderCheckbox = document.createElement('input');
+        folderCheckbox.type = 'checkbox';
+        folderCheckbox.classList.add('folder-checkbox', 'url-folder-checkbox');
+        folderCheckbox.addEventListener('change', (e) => {
+          const checked = e.target.checked;
+          li.querySelectorAll('input.url-checkbox, input.folder-checkbox').forEach(cb => cb.checked = checked);
+          updateUrlCount();
+        });
+        headerContainer.appendChild(folderCheckbox);
+        const toggleSpan = document.createElement('span');
+        toggleSpan.textContent = ' ' + key;
+        toggleSpan.style.cursor = 'pointer';
+        headerContainer.appendChild(toggleSpan);
+        li.appendChild(headerContainer);
+        const childContainer = document.createElement('div');
+        childContainer.classList.add('child-container', 'ml-4');
+        if (folderData._urls && folderData._urls.length > 0) {
+          renderUrlItems(folderData._urls, childContainer);
+        }
+        if (folderData.children) {
+          renderUrlTreeImproved(folderData.children, childContainer);
+        }
+        li.appendChild(childContainer);
+        toggleSpan.addEventListener('click', () => { childContainer.classList.toggle('hidden'); });
+        ul.appendChild(li);
+      });
+      if (node._other && node._other.urls && node._other.urls.length > 0) {
+        const li = document.createElement('li');
+        li.classList.add('folder-item');
+        const headerContainer = document.createElement('div');
+        headerContainer.classList.add('folder-header', 'flex', 'items-center', 'p-2', 'hover:bg-gray-100');
+        const folderCheckbox = document.createElement('input');
+        folderCheckbox.type = 'checkbox';
+        folderCheckbox.classList.add('folder-checkbox', 'url-folder-checkbox');
+        folderCheckbox.addEventListener('change', (e) => {
+          const checked = e.target.checked;
+          li.querySelectorAll('input.url-checkbox').forEach(cb => cb.checked = checked);
+          updateUrlCount();
+        });
+        headerContainer.appendChild(folderCheckbox);
+        const toggleSpan = document.createElement('span');
+        toggleSpan.textContent = ' Other URLs';
+        toggleSpan.style.cursor = 'pointer';
+        headerContainer.appendChild(toggleSpan);
+        li.appendChild(headerContainer);
+        const childContainer = document.createElement('div');
+        childContainer.classList.add('child-container', 'ml-4');
+        renderUrlItems(node._other.urls, childContainer);
+        li.appendChild(childContainer);
+        toggleSpan.addEventListener('click', () => { childContainer.classList.toggle('hidden'); });
+        ul.appendChild(li);
+      }
+      parentElement.appendChild(ul);
+    }
+    
+    function updateUrlCount() {
+      const selectedCount = document.querySelectorAll('.url-checkbox:checked').length;
+      const totalCount = document.querySelectorAll('.url-checkbox').length;
+      urlCountSpan.textContent = `${selectedCount} of ${totalCount} URLs selected`;
+    }
+    
+    function renderUrls(urls) {
+      const urlsContainer = document.getElementById('urls-tree');
+      urlsContainer.innerHTML = '';
+      const tree = buildUrlTree(urls);
+      renderUrlTreeImproved(tree, urlsContainer);
+      updateUrlCount();
+    }
+    
+    // Group selection buttons for URLs
+    document.getElementById('select-all-urls').addEventListener('click', () => {
+      document.querySelectorAll('#urls-tree input[type="checkbox"]').forEach(cb => { cb.checked = true; });
+      updateUrlCount();
+    });
+    document.getElementById('deselect-all-urls').addEventListener('click', () => {
+      document.querySelectorAll('#urls-tree input[type="checkbox"]').forEach(cb => { cb.checked = false; });
+      updateUrlCount();
+    });
+    
+    // --- Step 3: Scrape Selected URLs ---
+    scrapeUrlsBtn.addEventListener('click', async () => {
+      const selected = Array.from(document.querySelectorAll('.url-checkbox:checked')).map(cb => cb.dataset.url);
+      if(selected.length === 0) {
+        showError('step3', 'Please select at least one URL');
+        return;
+      }
+      addDebugMessage(`Starting to scrape ${selected.length} URL(s)`);
+      try {
+        showLoading('step3'); hideError('step3');
+        const response = await fetch('/api/scrape-content', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ urls: selected })
+        });
+        if(!response.ok) { throw new Error('Failed to scrape content'); }
+        const data = await response.json();
+        scrapedContent = data.content; // Expecting server returns HTML in 'htmlContent'
+        renderResults(scrapedContent);
+        hideLoading('step3');
+        document.getElementById('step3').classList.add('opacity-50');
+        document.getElementById('step4').classList.remove('hidden');
+        addDebugMessage(`Scraping completed. ${scrapedContent.length} result(s) obtained.`);
+      } catch(error) {
+        console.error('Error:', error);
+        showError('step3', error.message || 'An error occurred while scraping content');
+        hideLoading('step3');
+        addDebugMessage(`Error scraping URLs: ${error.message}`);
+      }
+    });
+    
+    // Render the scraped HTML content directly
+    // Replace the renderResults function in index.html with this version
+    function renderResults(results) {
+      const resultsList = document.getElementById('results-list');
+      resultsList.innerHTML = '';
+      results.forEach(result => {
+        // Use htmlContent directly instead of markdownContent
+        const safeHTML = DOMPurify.sanitize(result.htmlContent || '');
+        const div = document.createElement('div');
+        div.className = 'mb-4 p-4 border rounded';
+        div.innerHTML = `
+          <h3 class="text-xl font-semibold">${result.title}</h3>
+          <p class="text-sm text-gray-600">
+            Source: <a href="${result.url}" class="text-blue-500" target="_blank">${result.url}</a>
+          </p>
+          <div class="mt-2 content-preview">${safeHTML || 'No content available.'}</div>
+        `;
+        resultsList.appendChild(div);
+      });
+      document.getElementById('results-summary').textContent = `Scraped ${results.length} URL(s).`;
+    }
+
+    
+    
+    // --- Export Functionality using Browser Download ---
+    function triggerDownload(blob, filename) {
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = downloadUrl;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(downloadUrl);
+    }
+    
+    async function exportFile(format, ext) {
+      addDebugMessage(`Initiating export as ${format.toUpperCase()}...`);
+      try {
+        document.getElementById('export-loading').classList.remove('hidden');
+        const response = await fetch('/api/export', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ data: scrapedContent, format: format })
+        });
+        if (!response.ok) {
+          throw new Error('Export failed');
+        }
+        const blob = await response.blob();
+        const filename = `export-${new Date().toISOString().replace(/[:.]/g, '-')}.${ext}`;
+        triggerDownload(blob, filename);
+        document.getElementById('export-loading').classList.add('hidden');
+        addDebugMessage(`Export successful: ${filename}`);
+      } catch (error) {
+        console.error('Export error:', error);
+        document.getElementById('export-error').textContent = error.message || 'An error occurred during export';
+        document.getElementById('export-error').classList.remove('hidden');
+        document.getElementById('export-loading').classList.add('hidden');
+        addDebugMessage(`Export error: ${error.message}`);
+      }
+    }
+    
+    document.getElementById('export-json').addEventListener('click', () => exportFile('json', 'json'));
+    document.getElementById('export-markdown').addEventListener('click', () => exportFile('markdown', 'md'));
+    document.getElementById('export-html').addEventListener('click', () => exportFile('html', 'html'));
+    document.getElementById('export-text').addEventListener('click', () => exportFile('txt', 'txt'));
+    
+  </script>
+</body>
+</html>
